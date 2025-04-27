@@ -13,8 +13,9 @@ not be used in production code. It is not optimized for performance and does
 not handle all edge cases.
 
 ## Example
-Just include the `Main.h` header and write your `start` function. The 
-rest is handled by the framework.
+Just include the `Main.h` header and write your `start` function. You also need
+to preload the loader like `DYLD_INSERT_LIBRARIES=libLoader.dylib` (MacOS) or 
+`LD_PRELOAD=libLoader.so` (Linux). The rest is handled by the framework.
 
 ```c++
 #include "Main.h"
