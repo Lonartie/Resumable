@@ -18,6 +18,20 @@ struct exec_pause {
    }
 };
 
+struct checkpoint {
+   bool await_ready() const noexcept {
+      return false;
+   }
+
+   void await_suspend(std::coroutine_handle<>) noexcept {
+      Memory::instance().write("heap.bin");
+   }
+
+   void await_resume() noexcept {
+      // No-op
+   }
+};
+
 /// @brief C++20 coroutine promise type for void return types
 struct promise {
    using handle_type = std::coroutine_handle<promise>;
@@ -56,6 +70,10 @@ struct promise {
    }
 
    exec_pause yield_value(exec_pause v) {
+      return v;
+   }
+
+   checkpoint yield_value(checkpoint v) {
       return v;
    }
 };
