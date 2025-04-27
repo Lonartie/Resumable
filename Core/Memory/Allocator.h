@@ -11,6 +11,8 @@
 #include "IO.h"
 
 class Allocator {
+    static constexpr size_t maxFileSize = 512ull * 1024 * 1024; // 512 MiB
+
 public:
     static Allocator& instance();
 

@@ -80,25 +80,54 @@ bool Allocator::contains(void* ptr) const {
 
 void Allocator::write_sparse(const std::filesystem::path& path) {
    Memory::instance().pause(); {
-      std::ofstream stream(path);
-      // disable buffering
-      stream.rdbuf()->pubsetbuf(nullptr, 0);
+      size_t currentFileSize = 0;
+      size_t fileIndex = 0;
+
+      auto openNewStream = [&](std::ofstream& stream) {
+         if (stream.is_open()) stream.close();
+         std::filesystem::path newPath = path;
+         newPath.replace_filename(path.stem().string() + "_" + std::to_string(fileIndex) + path.extension().string());
+         stream.open(newPath, std::ios::binary);
+         // stream.rdbuf()->pubsetbuf(nullptr, 0); // disable buffering
+         currentFileSize = 0;
+      };
+
+      std::ofstream stream;
+      openNewStream(stream);
+
+      auto writeData = [&](const char* data, size_t size) {
+         size_t offset = 0;
+         while (offset < size) {
+            size_t remainingInFile = maxFileSize - currentFileSize;
+            size_t chunkSize = std::min(remainingInFile, size - offset);
+
+            if (chunkSize == 0) {
+               ++fileIndex;
+               openNewStream(stream);
+               continue;
+            }
+
+            stream.write(data + offset, chunkSize);
+            currentFileSize += chunkSize;
+            offset += chunkSize;
+         }
+      };
 
       // 1. write control header
-      stream.write(reinterpret_cast<const char*>(controlHeader_), sizeof(ControlHeader));
+      writeData(reinterpret_cast<const char*>(controlHeader_), sizeof(ControlHeader));
 
       // 2. write nodes
-      const auto* current = controlHeader_->list;
+      const BlockHeader* current = controlHeader_->list;
       while (current) {
          // 2.1 write block header
-         stream.write(reinterpret_cast<const char*>(current), sizeof(BlockHeader));
+         writeData(reinterpret_cast<const char*>(current), sizeof(BlockHeader));
 
          // 2.2 write block data (if used)
          if (!current->isFree) {
-            stream.write(reinterpret_cast<const char*>(current + 1), current->size);
+            writeData(reinterpret_cast<const char*>(current + 1), current->size);
          }
 
-         // 2.3 go to next block
+         // 2.3 next
          current = current->next;
       }
 
@@ -110,29 +139,65 @@ void Allocator::write_sparse(const std::filesystem::path& path) {
 
 void Allocator::read_sparse(const std::filesystem::path& path) {
    Memory::instance().pause(); {
-      std::ifstream stream(path);
-      // disable buffering
-      stream.rdbuf()->pubsetbuf(nullptr, 0);
+      size_t fileIndex = 0;
+      std::ifstream stream;
+
+      auto openStream = [&]() -> bool {
+         if (stream.is_open()) stream.close();
+         std::filesystem::path newPath = path;
+         newPath.replace_filename(path.stem().string() + "_" + std::to_string(fileIndex) + path.extension().string());
+         if (!std::filesystem::exists(newPath)) return false;
+         stream.open(newPath, std::ios::binary);
+         // stream.rdbuf()->pubsetbuf(nullptr, 0); // disable buffering
+         return true;
+      };
+
+      if (!openStream()) {
+         // File doesn't exist
+         return;
+      }
+
+      auto readData = [&](char* data, size_t size) -> bool {
+         size_t offset = 0;
+         while (offset < size) {
+            if (stream.eof()) {
+               ++fileIndex;
+               if (!openStream()) return false; // no more files
+            }
+
+            stream.read(data + offset, size - offset);
+            size_t readBytes = static_cast<size_t>(stream.gcount());
+            if (readBytes == 0 && !stream.eof()) {
+               return false; // read error
+            }
+            offset += readBytes;
+         }
+         return true;
+      };
 
       // 1. read control header
-      stream.read(reinterpret_cast<char*>(controlHeader_), sizeof(ControlHeader));
+      if (!readData(reinterpret_cast<char*>(controlHeader_), sizeof(ControlHeader)))
+         return;
 
       // 2. read nodes
-      auto* current = controlHeader_->list;
+      BlockHeader* current = controlHeader_->list;
       while (current) {
          // 2.1 read block header
-         stream.read(reinterpret_cast<char*>(current), sizeof(BlockHeader));
+         if (!readData(reinterpret_cast<char*>(current), sizeof(BlockHeader)))
+            break;
 
          // 2.2 read block data (if used)
          if (!current->isFree) {
-            stream.read(reinterpret_cast<char*>(current + 1), current->size);
+            if (!readData(reinterpret_cast<char*>(current + 1), current->size))
+               break;
          }
 
-         // 2.3 go to next block
+         // 2.3 next
          current = current->next;
       }
 
-      stream.close();
+      if (stream.is_open())
+         stream.close();
    }
    Memory::instance().resume();
 }

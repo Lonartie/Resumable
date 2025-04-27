@@ -16,9 +16,17 @@ int main(int argc, char** argv) {
    task root;
 
    // check for last checkpoint and restore it
-   if (std::filesystem::exists("heap.bin")) {
+   if (std::filesystem::exists("heap_0.bin")) {
       Memory::instance().read("heap.bin");
-      std::filesystem::remove("heap.bin");
+
+      for (int i = 0; true; i++) {
+         std::filesystem::path path = "heap_" + std::to_string(i) + ".bin";
+         if (std::filesystem::exists(path)) {
+            std::filesystem::remove(path);
+         } else {
+            break;
+         }
+      }
 
       // restore previous root task
       root = Allocator::instance().header().root->task;

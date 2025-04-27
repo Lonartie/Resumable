@@ -33,8 +33,6 @@ void Memory::deallocate(void* const ptr) {
 void Memory::write(std::filesystem::path const& path) {
    Allocator::instance().header().transform_write(m_main);
    Allocator::instance().write_sparse(path);
-   // const size_t fileSize = std::filesystem::file_size(path);
-   // printf("Wrote %zu bytes to %s\n", fileSize, path.c_str());
    Allocator::instance().header().transform_read(m_main);
 }
 

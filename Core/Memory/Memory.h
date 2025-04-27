@@ -34,7 +34,7 @@ private:
    static constexpr size_t MB_FACTOR = 1024 * 1024;
    static constexpr size_t GB_FACTOR = 1024 * MB_FACTOR;
    static inline uint8_t* target_heap = reinterpret_cast<uint8_t*>(0x602020000000);
-   static inline size_t m_size = 1 * GB_FACTOR;
+   static inline size_t m_size = 16 * GB_FACTOR;
    uint8_t* m_heap = nullptr;
    bool m_tunnel = false;
    int fd;
