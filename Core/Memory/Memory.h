@@ -22,6 +22,9 @@ public:
    void start();
    void stop();
 
+   void pause();
+   void resume();
+
    void setMain(void* main);
 
 private:
@@ -33,7 +36,7 @@ private:
    static inline uint8_t* target_heap = reinterpret_cast<uint8_t*>(0x602020000000);
    static inline size_t m_size = 1 * GB_FACTOR;
    uint8_t* m_heap = nullptr;
-   bool m_start = false;
+   bool m_tunnel = false;
    int fd;
    void* m_main = nullptr;
 };

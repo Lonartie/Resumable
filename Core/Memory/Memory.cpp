@@ -17,29 +17,29 @@ void Memory::init() {
 }
 
 void* Memory::allocate(const size_t size) {
-   if (!m_start) {
+   if (!m_tunnel) {
       return malloc(size);
    }
    return Allocator::instance().alloc(size);
 }
 
 void Memory::deallocate(void* const ptr) {
-   if (!m_start || !Allocator::instance().contains(ptr)) {
+   if (!m_tunnel || !Allocator::instance().contains(ptr)) {
       return free(ptr);
    }
    Allocator::instance().free(ptr);
 }
 
 void Memory::write(std::filesystem::path const& path) {
-   // std::unique_lock lock(Allocator::instance().mutex());
    Allocator::instance().header().transform_write(m_main);
-   write_buffer(path.c_str(), reinterpret_cast<const char*>(m_heap), m_size);
+   Allocator::instance().write_sparse(path);
+   // const size_t fileSize = std::filesystem::file_size(path);
+   // printf("Wrote %zu bytes to %s\n", fileSize, path.c_str());
    Allocator::instance().header().transform_read(m_main);
 }
 
 void Memory::read(std::filesystem::path const& path) {
-   // std::unique_lock lock(Allocator::instance().mutex());
-   read_buffer(path.c_str(), reinterpret_cast<char*>(m_heap), m_size);
+   Allocator::instance().read_sparse(path);
    Allocator::instance().header().transform_read(m_main);
 }
 
@@ -52,22 +52,30 @@ void* Memory::to() const {
 }
 
 void Memory::start() {
-   if (m_start) {
+   if (m_tunnel) {
       return;
    }
    // m_heap = (uint8_t*)map_file("dump.bin", target_heap, m_size, &fd);
-   m_start = true;
+   m_tunnel = true;
    Allocator::instance().init(m_heap, m_size);
 }
 
 void Memory::stop() {
-   if (!m_start) {
+   if (!m_tunnel) {
       return;
    }
 
    unmap_file(m_heap, m_size, fd);
-   m_start = false;
+   m_tunnel = false;
    m_heap = nullptr;
+}
+
+void Memory::pause() {
+   m_tunnel = false;
+}
+
+void Memory::resume() {
+   m_tunnel = true;
 }
 
 void Memory::setMain(void* main) {
@@ -81,7 +89,7 @@ Memory::Memory() {
 }
 
 Memory::~Memory() {
-   if (!m_start) {
+   if (!m_tunnel) {
       return;
    }
    stop();

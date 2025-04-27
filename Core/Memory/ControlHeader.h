@@ -2,20 +2,20 @@
 #include <vector>
 
 struct BlockHeader {
-   size_t size;
-   bool isFree;
-   BlockHeader* next;
+   size_t size = 0;
+   bool isFree = true;
+   BlockHeader* next = nullptr;
 };
 
 struct TaskNode {
-   void* task;
+   void* task = nullptr;
    std::vector<TaskNode*> children;
 };
 
 void doNotOptimize(void* data);
 
 struct ControlHeader {
-   BlockHeader* freeList = nullptr;
+   BlockHeader* list = nullptr;
    TaskNode* root = nullptr;
 
    void transform_write(void* main);

@@ -21,8 +21,8 @@ public:
 
     bool contains(void* ptr) const;
 
-    void write_sparse(std::filesystem::path path);
-    void read_sparse(std::filesystem::path path);
+    void write_sparse(const std::filesystem::path& path);
+    void read_sparse(const std::filesystem::path& path);
 
     ControlHeader& header();
 

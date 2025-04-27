@@ -1,4 +1,6 @@
 #include "Allocator.h"
+#include "Memory.h"
+#include <fstream>
 
 Allocator& Allocator::instance() {
    static Allocator instance;
@@ -17,7 +19,7 @@ void Allocator::init(void* memory, size_t size) {
    initial->isFree = true;
    initial->next = nullptr;
 
-   controlHeader_->freeList = initial;
+   controlHeader_->list = initial;
 }
 
 void* Allocator::alloc(size_t size) {
@@ -26,7 +28,7 @@ void* Allocator::alloc(size_t size) {
    size = (size + 7) & ~size_t(7);
 
    BlockHeader* prev = nullptr;
-   BlockHeader* current = controlHeader_->freeList;
+   BlockHeader* current = controlHeader_->list;
 
    while (current) {
       if (current->isFree && current->size >= size) {
@@ -45,12 +47,6 @@ void* Allocator::alloc(size_t size) {
          }
 
          current->isFree = false;
-
-         // Update free list head if needed
-         if (prev)
-            prev->next = current->next;
-         else
-            controlHeader_->freeList = current->next;
 
          return current + 1;
       }
@@ -75,10 +71,6 @@ void Allocator::free(void* ptr) {
 
    block->isFree = true;
 
-   // Insert into front of free list
-   block->next = controlHeader_->freeList;
-   controlHeader_->freeList = block;
-
    coalesce();
 }
 
@@ -86,11 +78,63 @@ bool Allocator::contains(void* ptr) const {
    return ptr >= memoryStart_ && ptr < memoryStart_ + totalSize_;
 }
 
-void Allocator::write_sparse(std::filesystem::path path) {
+void Allocator::write_sparse(const std::filesystem::path& path) {
+   Memory::instance().pause(); {
+      std::ofstream stream(path);
+      // disable buffering
+      stream.rdbuf()->pubsetbuf(nullptr, 0);
 
+      // 1. write control header
+      stream.write(reinterpret_cast<const char*>(controlHeader_), sizeof(ControlHeader));
+
+      // 2. write nodes
+      const auto* current = controlHeader_->list;
+      while (current) {
+         // 2.1 write block header
+         stream.write(reinterpret_cast<const char*>(current), sizeof(BlockHeader));
+
+         // 2.2 write block data (if used)
+         if (!current->isFree) {
+            stream.write(reinterpret_cast<const char*>(current + 1), current->size);
+         }
+
+         // 2.3 go to next block
+         current = current->next;
+      }
+
+      stream.flush();
+      stream.close();
+   }
+   Memory::instance().resume();
 }
 
-void Allocator::read_sparse(std::filesystem::path path) {
+void Allocator::read_sparse(const std::filesystem::path& path) {
+   Memory::instance().pause(); {
+      std::ifstream stream(path);
+      // disable buffering
+      stream.rdbuf()->pubsetbuf(nullptr, 0);
+
+      // 1. read control header
+      stream.read(reinterpret_cast<char*>(controlHeader_), sizeof(ControlHeader));
+
+      // 2. read nodes
+      auto* current = controlHeader_->list;
+      while (current) {
+         // 2.1 read block header
+         stream.read(reinterpret_cast<char*>(current), sizeof(BlockHeader));
+
+         // 2.2 read block data (if used)
+         if (!current->isFree) {
+            stream.read(reinterpret_cast<char*>(current + 1), current->size);
+         }
+
+         // 2.3 go to next block
+         current = current->next;
+      }
+
+      stream.close();
+   }
+   Memory::instance().resume();
 }
 
 ControlHeader& Allocator::header() {
@@ -102,20 +146,14 @@ std::recursive_mutex& Allocator::mutex() {
 }
 
 void Allocator::coalesce() {
-   BlockHeader* current = controlHeader_->freeList;
-   while (current) {
+   BlockHeader* current = controlHeader_->list;
+   while (current && current->next) {
       BlockHeader* next = current->next;
-
-      // Self-loop protection
-      if (next == current) {
-         current->next = nullptr;
-         break;
-      }
 
       uint8_t* currentEnd = reinterpret_cast<uint8_t*>(current + 1) + current->size;
 
-      if (next && reinterpret_cast<uint8_t*>(next) == currentEnd && next->isFree) {
-         // merge
+      if (current->isFree && next->isFree && reinterpret_cast<uint8_t*>(next) == currentEnd) {
+         // Merge
          current->size += sizeof(BlockHeader) + next->size;
          current->next = next->next;
       } else {
@@ -123,3 +161,4 @@ void Allocator::coalesce() {
       }
    }
 }
+
